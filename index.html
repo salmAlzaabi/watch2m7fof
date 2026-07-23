@@ -3,113 +3,211 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>نظام MDT - شرطة</title>
+    <title>MDT - نظام شرطة</title>
     <link rel="stylesheet" href="style.css" />
-    <!-- Font Awesome للأيقونات -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
 </head>
 <body>
 
-    <!-- الشريط العلوي -->
-    <header class="navbar">
-        <div class="logo">
-            <i class="fas fa-shield-alt"></i>
-            <span>MDT | شرطة</span>
-        </div>
-        <div class="badge">
-            <i class="fas fa-circle" style="color: #00ff88;"></i>
-            <span>تم الاتصال</span>
-        </div>
-    </header>
+    <!-- ======== سطح المكتب ======== -->
+    <div class="desktop">
 
-    <!-- المحتوى الرئيسي -->
-    <main class="container">
-
-        <!-- بطاقات الإحصائيات -->
-        <section class="stats">
-            <div class="stat-card">
+        <!-- أيقونات سطح المكتب -->
+        <div class="desktop-icons">
+            <div class="desktop-icon" data-app="reports">
+                <i class="fas fa-clipboard-list"></i>
+                <span>البلاغات</span>
+            </div>
+            <div class="desktop-icon" data-app="warrants">
+                <i class="fas fa-gavel"></i>
+                <span>أوامر القبض</span>
+            </div>
+            <div class="desktop-icon" data-app="search">
+                <i class="fas fa-search"></i>
+                <span>البحث</span>
+            </div>
+            <div class="desktop-icon" data-app="officers">
                 <i class="fas fa-users"></i>
-                <div>
-                    <h3>الضباط</h3>
-                    <p id="officerCount">0</p>
-                </div>
+                <span>الضباط</span>
             </div>
-            <div class="stat-card">
-                <i class="fas fa-exclamation-triangle"></i>
-                <div>
-                    <h3>البلاغات النشطة</h3>
-                    <p id="reportCount">0</p>
-                </div>
+            <div class="desktop-icon" data-app="stats">
+                <i class="fas fa-chart-pie"></i>
+                <span>الإحصائيات</span>
             </div>
-            <div class="stat-card">
-                <i class="fas fa-handcuffs"></i>
-                <div>
-                    <h3>أوامر قبض</h3>
-                    <p id="warrantCount">0</p>
-                </div>
+            <div class="desktop-icon" data-app="dispatch">
+                <i class="fas fa-broadcast-tower"></i>
+                <span>الإرسال</span>
             </div>
-        </section>
-
-        <!-- أزرار الإجراءات السريعة -->
-        <div class="actions">
-            <button id="addReportBtn" class="btn primary"><i class="fas fa-plus"></i> بلاغ جديد</button>
-            <button id="addWarrantBtn" class="btn warning"><i class="fas fa-gavel"></i> أمر قبض</button>
-            <button id="searchBtn" class="btn info"><i class="fas fa-search"></i> بحث</button>
         </div>
 
-        <!-- البحث -->
-        <section class="search-section" id="searchSection" style="display:none;">
-            <input type="text" id="searchInput" placeholder="ابحث عن مواطن أو مركبة..." />
-            <button id="searchExecBtn"><i class="fas fa-search"></i></button>
-            <div id="searchResult"></div>
-        </section>
+        <!-- ======== النوافذ ======== -->
 
-        <!-- جدول البلاغات -->
-        <section class="table-section">
-            <h2><i class="fas fa-list"></i> البلاغات</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>النوع</th>
-                        <th>الموقع</th>
-                        <th>الحالة</th>
-                        <th>الوقت</th>
-                        <th>إجراء</th>
-                    </tr>
-                </thead>
-                <tbody id="reportsTableBody">
-                    <!-- تملأ بواسطة JavaScript -->
-                </tbody>
-            </table>
-        </section>
+        <!-- نافذة البلاغات -->
+        <div class="window" id="win-reports" data-app="reports">
+            <div class="window-header">
+                <div class="window-title">
+                    <i class="fas fa-clipboard-list"></i> البلاغات
+                </div>
+                <div class="window-controls">
+                    <button class="minimize"><i class="fas fa-minus"></i></button>
+                    <button class="maximize"><i class="fas fa-square"></i></button>
+                    <button class="close"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div class="window-body">
+                <div class="toolbar">
+                    <button class="btn primary" id="addReportBtn"><i class="fas fa-plus"></i> بلاغ جديد</button>
+                    <input type="text" id="reportFilter" placeholder="فلترة البلاغات..." />
+                </div>
+                <table>
+                    <thead>
+                        <tr><th>#</th><th>النوع</th><th>الموقع</th><th>الحالة</th><th>الوقت</th><th>إجراء</th></tr>
+                    </thead>
+                    <tbody id="reportsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
 
-        <!-- جدول أوامر القبض -->
-        <section class="table-section">
-            <h2><i class="fas fa-gavel"></i> أوامر القبض</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>المطلوب</th>
-                        <th>التهمة</th>
-                        <th>الحالة</th>
-                        <th>إجراء</th>
-                    </tr>
-                </thead>
-                <tbody id="warrantsTableBody">
-                    <!-- تملأ بواسطة JavaScript -->
-                </tbody>
-            </table>
-        </section>
+        <!-- نافذة أوامر القبض -->
+        <div class="window" id="win-warrants" data-app="warrants">
+            <div class="window-header">
+                <div class="window-title">
+                    <i class="fas fa-gavel"></i> أوامر القبض
+                </div>
+                <div class="window-controls">
+                    <button class="minimize"><i class="fas fa-minus"></i></button>
+                    <button class="maximize"><i class="fas fa-square"></i></button>
+                    <button class="close"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div class="window-body">
+                <div class="toolbar">
+                    <button class="btn warning" id="addWarrantBtn"><i class="fas fa-plus"></i> أمر قبض جديد</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr><th>#</th><th>المطلوب</th><th>التهمة</th><th>الحالة</th><th>إجراء</th></tr>
+                    </thead>
+                    <tbody id="warrantsTableBody"></tbody>
+                </table>
+            </div>
+        </div>
 
-    </main>
+        <!-- نافذة البحث -->
+        <div class="window" id="win-search" data-app="search">
+            <div class="window-header">
+                <div class="window-title">
+                    <i class="fas fa-search"></i> البحث
+                </div>
+                <div class="window-controls">
+                    <button class="minimize"><i class="fas fa-minus"></i></button>
+                    <button class="maximize"><i class="fas fa-square"></i></button>
+                    <button class="close"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div class="window-body">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="ابحث عن اسم، بلاغ، تهمة..." />
+                    <button id="searchExecBtn"><i class="fas fa-search"></i></button>
+                </div>
+                <div id="searchResult" class="search-result"></div>
+            </div>
+        </div>
+
+        <!-- نافذة الضباط -->
+        <div class="window" id="win-officers" data-app="officers">
+            <div class="window-header">
+                <div class="window-title">
+                    <i class="fas fa-users"></i> الضباط
+                </div>
+                <div class="window-controls">
+                    <button class="minimize"><i class="fas fa-minus"></i></button>
+                    <button class="maximize"><i class="fas fa-square"></i></button>
+                    <button class="close"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div class="window-body">
+                <div class="toolbar">
+                    <button class="btn primary" id="addOfficerBtn"><i class="fas fa-user-plus"></i> ضابط جديد</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr><th>#</th><th>الاسم</th><th>الرتبة</th><th>القسم</th><th>الحالة</th><th>إجراء</th></tr>
+                    </thead>
+                    <tbody id="officersTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- نافذة الإحصائيات -->
+        <div class="window" id="win-stats" data-app="stats">
+            <div class="window-header">
+                <div class="window-title">
+                    <i class="fas fa-chart-pie"></i> الإحصائيات
+                </div>
+                <div class="window-controls">
+                    <button class="minimize"><i class="fas fa-minus"></i></button>
+                    <button class="maximize"><i class="fas fa-square"></i></button>
+                    <button class="close"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div class="window-body">
+                <div class="stats-grid">
+                    <div class="stat-card"><i class="fas fa-users"></i><div><h3>الضباط</h3><p id="statOfficers">0</p></div></div>
+                    <div class="stat-card"><i class="fas fa-exclamation-triangle"></i><div><h3>بلاغات نشطة</h3><p id="statReports">0</p></div></div>
+                    <div class="stat-card"><i class="fas fa-handcuffs"></i><div><h3>أوامر قبض</h3><p id="statWarrants">0</p></div></div>
+                    <div class="stat-card"><i class="fas fa-check-circle"></i><div><h3>بلاغات مغلقة</h3><p id="statClosed">0</p></div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- نافذة الإرسال (Dispatch) -->
+        <div class="window" id="win-dispatch" data-app="dispatch">
+            <div class="window-header">
+                <div class="window-title">
+                    <i class="fas fa-broadcast-tower"></i> الإرسال
+                </div>
+                <div class="window-controls">
+                    <button class="minimize"><i class="fas fa-minus"></i></button>
+                    <button class="maximize"><i class="fas fa-square"></i></button>
+                    <button class="close"><i class="fas fa-times"></i></button>
+                </div>
+            </div>
+            <div class="window-body">
+                <div class="dispatch-log" id="dispatchLog">
+                    <div class="log-entry system">🟢 نظام MDT جاهز للعمل</div>
+                </div>
+                <div class="dispatch-input">
+                    <input type="text" id="dispatchInput" placeholder="أرسل تنبيه للضباط..." />
+                    <button id="dispatchSendBtn"><i class="fas fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ======== شريط المهام ======== -->
+    <div class="taskbar">
+        <div class="start-btn">
+            <i class="fas fa-shield-alt"></i>
+            <span>MDT</span>
+        </div>
+        <div class="taskbar-apps" id="taskbarApps">
+            <!-- تطبيقات مفتوحة تظهر هنا -->
+        </div>
+        <div class="taskbar-clock" id="taskbarClock">
+            <i class="far fa-clock"></i>
+            <span>00:00</span>
+        </div>
+    </div>
+
+    <!-- ======== المودالات ======== -->
 
     <!-- مودال إضافة بلاغ -->
     <div id="reportModal" class="modal">
         <div class="modal-content">
             <span class="close" id="closeReportModal">&times;</span>
-            <h2>بلاغ جديد</h2>
+            <h2><i class="fas fa-plus-circle"></i> بلاغ جديد</h2>
             <form id="reportForm">
                 <label>نوع البلاغ</label>
                 <select id="reportType" required>
@@ -117,6 +215,7 @@
                     <option value="شغب">شغب</option>
                     <option value="حريق">حريق</option>
                     <option value="حوادث سير">حوادث سير</option>
+                    <option value="تجمهر">تجمهر</option>
                     <option value="أخرى">أخرى</option>
                 </select>
                 <label>الموقع</label>
@@ -132,13 +231,36 @@
     <div id="warrantModal" class="modal">
         <div class="modal-content">
             <span class="close" id="closeWarrantModal">&times;</span>
-            <h2>أمر قبض جديد</h2>
+            <h2><i class="fas fa-gavel"></i> أمر قبض جديد</h2>
             <form id="warrantForm">
                 <label>اسم المطلوب</label>
                 <input type="text" id="warrantName" placeholder="الاسم الكامل" required />
                 <label>التهمة</label>
                 <input type="text" id="warrantCharge" placeholder="مثال: سطو مسلح" required />
                 <button type="submit" class="btn warning">إصدار أمر قبض</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- مودال إضافة ضابط -->
+    <div id="officerModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="closeOfficerModal">&times;</span>
+            <h2><i class="fas fa-user-plus"></i> ضابط جديد</h2>
+            <form id="officerForm">
+                <label>الاسم</label>
+                <input type="text" id="officerName" placeholder="الاسم الكامل" required />
+                <label>الرتبة</label>
+                <select id="officerRank">
+                    <option value="ملازم">ملازم</option>
+                    <option value="نقيب">نقيب</option>
+                    <option value="رائد">رائد</option>
+                    <option value="مقدم">مقدم</option>
+                    <option value="عقيد">عقيد</option>
+                </select>
+                <label>القسم</label>
+                <input type="text" id="officerDept" placeholder="مثال: المباحث" required />
+                <button type="submit" class="btn primary">إضافة ضابط</button>
             </form>
         </div>
     </div>
