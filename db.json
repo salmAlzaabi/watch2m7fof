@@ -1,0 +1,11 @@
+{
+  "reports": [
+    { "id": 1, "type": "سرقة", "location": "شارع الملك فهد", "status": "active", "time": "10:30" },
+    { "id": 2, "type": "حريق", "location": "مبنى الأمانة", "status": "closed", "time": "09:15" }
+  ],
+  "warrants": [
+    { "id": 1, "name": "أحمد محمد", "charge": "سطو مسلح", "status": "wanted" },
+    { "id": 2, "name": "سامي حسن", "charge": "تهريب مخدرات", "status": "wanted" }
+  ],
+  "officers": 12
+}
